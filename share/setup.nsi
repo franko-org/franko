@@ -5,7 +5,7 @@ SetCompressor /SOLID lzma
 
 # General Symbol Definitions
 !define REGKEY "SOFTWARE\$(^Name)"
-!define VERSION 0.8.4.1
+!define VERSION 0.8.5.1
 !define COMPANY "Franko Collective"
 !define URL http://www.frankos.org
 
@@ -45,13 +45,13 @@ Var StartMenuGroup
 !insertmacro MUI_LANGUAGE English
 
 # Installer attributes
-OutFile franko-0.8.4.1-win32-setup.exe
+OutFile franko-0.8.5.1-win32-setup.exe
 InstallDir $PROGRAMFILES\Franko
 CRCCheck on
 XPStyle on
 BrandingText " "
 ShowInstDetails show
-VIProductVersion 0.8.4.1
+VIProductVersion 0.8.5.1
 VIAddVersionKey ProductName Franko
 VIAddVersionKey ProductVersion "${VERSION}"
 VIAddVersionKey CompanyName "${COMPANY}"
