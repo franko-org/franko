@@ -1206,7 +1206,7 @@ void static PruneOrphanBlocks()
 
 int64_t static GetBlockValue(int nHeight, int64_t nFees)
 {
-    int64 nSubsidy = 0.25 * COIN;
+    int64_t nSubsidy = 0.25 * COIN;
 
     // Subsidy is cut in half every 22471626 blocks, which will occur approximately every 22 years
     nSubsidy >>= (nHeight / 22471626); // Franko: 22m blocks in ~22 years
