@@ -54,6 +54,7 @@ bool fReindex = false;
 bool fBenchmark = false;
 bool fTxIndex = false;
 unsigned int nCoinCacheSize = 5000;
+static CBigNum bnProofOfWorkLimit = Params().ProofOfWorkLimit();
 
 /** Fees smaller than this (in satoshi) are considered zero fee (for transaction creation) */
 int64_t CTransaction::nMinTxFee = 100000000;  // Override with -mintxfee
@@ -1203,7 +1204,7 @@ void static PruneOrphanBlocks()
     mapOrphanBlocks.erase(hash);
 }
 
-int64 static GetBlockValue(int nHeight, int64 nFees)
+int64 static GetBlockValue(int nHeight, int64_t nFees)
 {
     int64 nSubsidy = 0.25 * COIN;
 
@@ -1224,7 +1225,7 @@ unsigned int ComputeMinWork(unsigned int nBase, int64_t nTime)
 {
     // Testnet has min-difficulty blocks
     // after nTargetSpacing*2 time between blocks:
-    if (fTestNet && nTime > nTargetSpacing*2)
+    if (TestNet() && nTime > nTargetSpacing*2)
         return bnProofOfWorkLimit.GetCompact();
 
     CBigNum bnResult;
@@ -1253,7 +1254,7 @@ unsigned int static GetNextWorkRequired_V1(const CBlockIndex* pindexLast, const 
     if ((pindexLast->nHeight+1) % nInterval != 0)
     {
         // Special difficulty rule for testnet:
-        if (fTestNet)
+        if (TestNet())
         {
             // If the new block's timestamp is more than 2* 10 minutes
             // then allow mining of a min-difficulty block.
@@ -1397,10 +1398,10 @@ unsigned int static GetNextWorkRequired_V2(const CBlockIndex* pindexLast, const 
         return KimotoGravityWell(pindexLast, pblock, BlocksTargetSpacing, PastBlocksMin, PastBlocksMax);
 }
 
-unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
+unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
         int DiffMode = 1;
-        if (fTestNet) {
+        if (TestNet()) {
                 if (pindexLast->nHeight+1 >= 0) { DiffMode = 2; }
         }
         else {
