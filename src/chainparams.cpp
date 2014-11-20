@@ -251,14 +251,13 @@ public:
         pchMessageStart[2] = 0xcc;
         pchMessageStart[3] = 0xdd;
         nSubsidyHalvingInterval = 150;
-        bnProofOfWorkLimit = CBigNum(~uint256(0) >> 1);
-        genesis.nTime = 1296688602;
-        genesis.nBits = 0x207fffff;
-        genesis.nNonce = 2;
+        bnProofOfWorkLimit = CBigNum(~uint256(0) >> 20);
+        genesis.nTime = 1368145664;
+        genesis.nNonce = 277929;
         hashGenesisBlock = genesis.GetHash();
         nDefaultPort = 18444;
         strDataDir = "regtest";
-        assert(hashGenesisBlock == uint256("0x3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"));
+        assert(hashGenesisBlock == uint256("0xe56eb4c93f6b6a223da0aa14b9d40b83e32c28675fd570e413d67ffccc685c84"));
 
         vSeeds.clear();  // Regtest mode doesn't have any DNS seeds.
     }
