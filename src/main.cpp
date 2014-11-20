@@ -1204,7 +1204,7 @@ void static PruneOrphanBlocks()
     mapOrphanBlocks.erase(hash);
 }
 
-int64 static GetBlockValue(int nHeight, int64_t nFees)
+int64_t static GetBlockValue(int nHeight, int64_t nFees)
 {
     int64 nSubsidy = 0.25 * COIN;
 
