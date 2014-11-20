@@ -1204,9 +1204,9 @@ void static PruneOrphanBlocks()
     mapOrphanBlocks.erase(hash);
 }
 
-int64 static GetBlockValue(int nHeight, int64_t nFees)
+int64_t static GetBlockValue(int nHeight, int64_t nFees)
 {
-    int64 nSubsidy = 0.25 * COIN;
+    int64_t nSubsidy = 0.25 * COIN;
 
     // Subsidy is cut in half every 22471626 blocks, which will occur approximately every 22 years
     nSubsidy >>= (nHeight / 22471626); // Franko: 22m blocks in ~22 years
@@ -1242,74 +1242,70 @@ unsigned int ComputeMinWork(unsigned int nBase, int64_t nTime)
     return bnResult.GetCompact();
 }
 
-unsigned int static GetNextWorkRequired_V1(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
+unsigned int GetNextWorkRequired_V1(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
-    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+    unsigned int nProofOfWorkLimit = Params().ProofOfWorkLimit().GetCompact();
 
     // Genesis block
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
 
     // Only change once per interval
-    if ((pindexLast->nHeight+1) % nInterval != 0)
+    if ((pindexLast->nHeight+1) % Params().Interval() != 0)
     {
-        // Special difficulty rule for testnet:
-        if (TestNet())
+        if (Params().AllowMinDifficultyBlocks())
         {
+            // Special difficulty rule for testnet:
             // If the new block's timestamp is more than 2* 10 minutes
             // then allow mining of a min-difficulty block.
-            if (pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
+            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + Params().TargetSpacing()*2)
                 return nProofOfWorkLimit;
             else
             {
                 // Return the last non-special-min-difficulty-rules-block
                 const CBlockIndex* pindex = pindexLast;
-                while (pindex->pprev && pindex->nHeight % nInterval != 0 && pindex->nBits == nProofOfWorkLimit)
+                while (pindex->pprev && pindex->nHeight % Params().Interval() != 0 && pindex->nBits == nProofOfWorkLimit)
                     pindex = pindex->pprev;
                 return pindex->nBits;
             }
         }
-
         return pindexLast->nBits;
     }
 
-    // Franko: This fixes an issue where a 51% attack can change difficulty at will.
-    // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
-    int blockstogoback = nInterval-1;
-    if ((pindexLast->nHeight+1) != nInterval)
-        blockstogoback = nInterval;
-
     // Go back by what we want to be 14 days worth of blocks
     const CBlockIndex* pindexFirst = pindexLast;
-    for (int i = 0; pindexFirst && i < blockstogoback; i++)
+    for (int i = 0; pindexFirst && i < Params().Interval()-1; i++)
         pindexFirst = pindexFirst->pprev;
     assert(pindexFirst);
 
     // Limit adjustment step
     int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
-    printf("  nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < nTargetTimespan/4)
-        nActualTimespan = nTargetTimespan/4;
-    if (nActualTimespan > nTargetTimespan*4)
-        nActualTimespan = nTargetTimespan*4;
+    LogPrintf("  nActualTimespan = %d  before bounds\n", nActualTimespan);
+    if (nActualTimespan < Params().TargetTimespan()/4)
+        nActualTimespan = Params().TargetTimespan()/4;
+    if (nActualTimespan > Params().TargetTimespan()*4)
+        nActualTimespan = Params().TargetTimespan()*4;
 
     // Retarget
-    CBigNum bnNew;
+    uint256 bnNew;
+    uint256 bnOld;
     bnNew.SetCompact(pindexLast->nBits);
+    bnOld = bnNew;
     bnNew *= nActualTimespan;
-    bnNew /= nTargetTimespan;
+    bnNew /= Params().TargetTimespan();
 
-    if (bnNew > bnProofOfWorkLimit)
-        bnNew = bnProofOfWorkLimit;
+    if (bnNew > Params().ProofOfWorkLimit())
+        bnNew = Params().ProofOfWorkLimit();
 
     /// debug print
-    printf("GetNextWorkRequired RETARGET\n");
-    printf("nTargetTimespan = %"PRI64d"    nActualTimespan = %"PRI64d"\n", nTargetTimespan, nActualTimespan);
-    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
-    printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+    LogPrintf("GetNextWorkRequired RETARGET\n");
+    LogPrintf("Params().TargetTimespan() = %d    nActualTimespan = %d\n", Params().TargetTimespan(), nActualTimespan);
+    LogPrintf("Before: %08x  %s\n", pindexLast->nBits, bnOld.ToString());
+    LogPrintf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.ToString());
 
     return bnNew.GetCompact();
 }
+
 unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBlockHeader *pblock, uint64_t TargetBlocksSpacingSeconds, uint64_t PastBlocksMin, uint64_t PastBlocksMax) {
         /* current difficulty formula, megacoin - kimoto gravity well */
         const CBlockIndex  *BlockLastSolved                                = pindexLast;
