@@ -10,7 +10,7 @@
 // Name of client reported in the 'version' message. Report the same name
 // for both frankod and franko-qt, to make it harder for attackers to
 // target servers or GUI users specifically.
-const std::string CLIENT_NAME("Shibetoshi");
+const std::string CLIENT_NAME("Frankoshi");
 
 // Client version number
 #define CLIENT_VERSION_SUFFIX   ""
@@ -39,7 +39,7 @@ const std::string CLIENT_NAME("Shibetoshi");
 #define GIT_ARCHIVE 1
 #ifdef GIT_ARCHIVE
 #    define GIT_COMMIT_ID "6522864"
-#    define GIT_COMMIT_DATE "Sun, 24 Aug 2014 17:09:34 +0200"
+#    define GIT_COMMIT_DATE "Thur, 20 Nov 2014 17:09:34 +0200"
 #endif
 
 #define BUILD_DESC_WITH_SUFFIX(maj,min,rev,build,suffix) \
