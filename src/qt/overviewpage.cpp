@@ -1,14 +1,19 @@
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include "overviewpage.h"
 #include "ui_overviewpage.h"
 
-#include "clientmodel.h"
-#include "walletmodel.h"
 #include "bitcoinunits.h"
-#include "optionsmodel.h"
-#include "transactiontablemodel.h"
-#include "transactionfilterproxy.h"
-#include "guiutil.h"
+#include "clientmodel.h"
 #include "guiconstants.h"
+#include "guiutil.h"
+#include "util.h"
+#include "optionsmodel.h"
+#include "transactionfilterproxy.h"
+#include "transactiontablemodel.h"
+#include "walletmodel.h"
 
 #include <QAbstractItemDelegate>
 #include <QPainter>
@@ -20,7 +25,7 @@ class TxViewDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT
 public:
-    TxViewDelegate(): QAbstractItemDelegate(), unit(BitcoinUnits::BTC)
+    TxViewDelegate(): QAbstractItemDelegate(), unit(BitcoinUnits::FRK)
     {
 
     }
@@ -116,6 +121,15 @@ OverviewPage::OverviewPage(QWidget *parent) :
     ui->labelWalletStatus->setText("(" + tr("out of sync") + ")");
     ui->labelTransactionsStatus->setText("(" + tr("out of sync") + ")");
 
+    // Customized branding image.
+    boost::filesystem::path frkpath = GetDataDir(false);
+    frkpath /= "franko.png";
+    QPixmap shibecoin(frkpath.string().c_str());
+
+    if ( !shibecoin.isNull() ) {
+        ui->label_wallet_bgcoin->setPixmap(shibecoin);
+    }
+
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
 }
@@ -140,6 +154,7 @@ void OverviewPage::setBalance(qint64 balance, qint64 unconfirmedBalance, qint64 
     ui->labelBalance->setText(BitcoinUnits::formatWithUnit(unit, balance));
     ui->labelUnconfirmed->setText(BitcoinUnits::formatWithUnit(unit, unconfirmedBalance));
     ui->labelImmature->setText(BitcoinUnits::formatWithUnit(unit, immatureBalance));
+    ui->labelTotal->setText(BitcoinUnits::formatWithUnit(unit, balance + unconfirmedBalance + immatureBalance));
 
     // only show immature (newly mined) balance if it's non-zero, so as not to complicate things
     // for the non-mining users
@@ -170,6 +185,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         filter->setLimit(NUM_ITEMS);
         filter->setDynamicSortFilter(true);
         filter->setSortRole(Qt::EditRole);
+        filter->setShowInactive(false);
         filter->sort(TransactionTableModel::Status, Qt::DescendingOrder);
 
         ui->listTransactions->setModel(filter);
@@ -182,7 +198,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         connect(model->getOptionsModel(), SIGNAL(displayUnitChanged(int)), this, SLOT(updateDisplayUnit()));
     }
 
-    // update the display unit, to not use the default ("BTC")
+    // update the display unit, to not use the default ("FRK")
     updateDisplayUnit();
 }
 
