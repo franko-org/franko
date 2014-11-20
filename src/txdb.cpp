@@ -1,11 +1,15 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2012 The Bitcoin developers
+// Copyright (c) 2009-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "txdb.h"
-#include "main.h"
-#include "hash.h"
+
+#include "core.h"
+#include "uint256.h"
+#include "auxpow.h"
+
+#include <stdint.h>
 
 using namespace std;
 
@@ -23,8 +27,8 @@ void static BatchWriteHashBestChain(CLevelDBBatch &batch, const uint256 &hash) {
 CCoinsViewDB::CCoinsViewDB(size_t nCacheSize, bool fMemory, bool fWipe) : db(GetDataDir() / "chainstate", nCacheSize, fMemory, fWipe) {
 }
 
-bool CCoinsViewDB::GetCoins(const uint256 &txid, CCoins &coins) { 
-    return db.Read(make_pair('c', txid), coins); 
+bool CCoinsViewDB::GetCoins(const uint256 &txid, CCoins &coins) {
+    return db.Read(make_pair('c', txid), coins);
 }
 
 bool CCoinsViewDB::SetCoins(const uint256 &txid, const CCoins &coins) {
@@ -34,52 +38,55 @@ bool CCoinsViewDB::SetCoins(const uint256 &txid, const CCoins &coins) {
 }
 
 bool CCoinsViewDB::HaveCoins(const uint256 &txid) {
-    return db.Exists(make_pair('c', txid)); 
+    return db.Exists(make_pair('c', txid));
 }
 
-CBlockIndex *CCoinsViewDB::GetBestBlock() {
+uint256 CCoinsViewDB::GetBestBlock() {
     uint256 hashBestChain;
     if (!db.Read('B', hashBestChain))
-        return NULL;
-    std::map<uint256, CBlockIndex*>::iterator it = mapBlockIndex.find(hashBestChain);
-    if (it == mapBlockIndex.end())
-        return NULL;
-    return it->second;
+        return uint256(0);
+    return hashBestChain;
 }
 
-bool CCoinsViewDB::SetBestBlock(CBlockIndex *pindex) {
+bool CCoinsViewDB::SetBestBlock(const uint256 &hashBlock) {
     CLevelDBBatch batch;
-    BatchWriteHashBestChain(batch, pindex->GetBlockHash()); 
+    BatchWriteHashBestChain(batch, hashBlock);
     return db.WriteBatch(batch);
 }
 
-bool CCoinsViewDB::BatchWrite(const std::map<uint256, CCoins> &mapCoins, CBlockIndex *pindex) {
-    printf("Committing %u changed transactions to coin database...\n", (unsigned int)mapCoins.size());
+bool CCoinsViewDB::BatchWrite(const std::map<uint256, CCoins> &mapCoins, const uint256 &hashBlock) {
+    LogPrint("coindb", "Committing %u changed transactions to coin database...\n", (unsigned int)mapCoins.size());
 
     CLevelDBBatch batch;
     for (std::map<uint256, CCoins>::const_iterator it = mapCoins.begin(); it != mapCoins.end(); it++)
         BatchWriteCoins(batch, it->first, it->second);
-    if (pindex)
-        BatchWriteHashBestChain(batch, pindex->GetBlockHash());
+    if (hashBlock != uint256(0))
+        BatchWriteHashBestChain(batch, hashBlock);
 
     return db.WriteBatch(batch);
 }
 
-CBlockTreeDB::CBlockTreeDB(size_t nCacheSize, bool fMemory, bool fWipe) : CLevelDB(GetDataDir() / "blocks" / "index", nCacheSize, fMemory, fWipe) {
+CBlockTreeDB::CBlockTreeDB(size_t nCacheSize, bool fMemory, bool fWipe) : CLevelDBWrapper(GetDataDir() / "blocks" / "index", nCacheSize, fMemory, fWipe) {
 }
 
-bool CBlockTreeDB::WriteBlockIndex(const CDiskBlockIndex& blockindex)
+bool CBlockTreeDB::WriteDiskBlockIndex(const CDiskBlockIndex& diskblockindex)
 {
-    return Write(make_pair('b', blockindex.GetBlockHash()), blockindex);
+    return Write(boost::tuples::make_tuple('b', *diskblockindex.phashBlock, 'a'), diskblockindex);
 }
 
-bool CBlockTreeDB::ReadBestInvalidWork(CBigNum& bnBestInvalidWork)
+bool CBlockTreeDB::WriteBlockIndex(const CBlockIndex& blockindex)
 {
-    return Read('I', bnBestInvalidWork);
+    return Write(boost::tuples::make_tuple('b', blockindex.GetBlockHash(), 'b'), blockindex);
+}
+
+bool CBlockTreeDB::ReadDiskBlockIndex(const uint256 &blkid, CDiskBlockIndex &diskblockindex)
+{
+    return Read(boost::tuples::make_tuple('b', blkid, 'a'), diskblockindex);
 }
 
 bool CBlockTreeDB::WriteBestInvalidWork(const CBigNum& bnBestInvalidWork)
 {
+    // Obsolete; only written for backward compatibility.
     return Write('I', bnBestInvalidWork);
 }
 
@@ -112,13 +119,13 @@ bool CBlockTreeDB::ReadLastBlockFile(int &nFile) {
 }
 
 bool CCoinsViewDB::GetStats(CCoinsStats &stats) {
-    leveldb::Iterator *pcursor = db.NewIterator();
+    boost::scoped_ptr<leveldb::Iterator> pcursor(db.NewIterator());
     pcursor->SeekToFirst();
 
     CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
-    stats.hashBlock = GetBestBlock()->GetBlockHash();
+    stats.hashBlock = GetBestBlock();
     ss << stats.hashBlock;
-    int64 nTotalAmount = 0;
+    int64_t nTotalAmount = 0;
     while (pcursor->Valid()) {
         boost::this_thread::interruption_point();
         try {
@@ -135,7 +142,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) {
                 ssKey >> txhash;
                 ss << txhash;
                 ss << VARINT(coins.nVersion);
-                ss << (coins.fCoinBase ? 'c' : 'n'); 
+                ss << (coins.fCoinBase ? 'c' : 'n');
                 ss << VARINT(coins.nHeight);
                 stats.nTransactions++;
                 for (unsigned int i=0; i<coins.vout.size(); i++) {
@@ -152,11 +159,11 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) {
             }
             pcursor->Next();
         } catch (std::exception &e) {
-            return error("%s() : deserialize error", __PRETTY_FUNCTION__);
+            return error("%s : Deserialize or I/O error - %s", __func__, e.what());
         }
     }
-    delete pcursor;
-    stats.nHeight = GetBestBlock()->nHeight;
+    
+    stats.nHeight = mapBlockIndex.find(GetBestBlock())->second->nHeight;
     stats.hashSerialized = ss.GetHash();
     stats.nTotalAmount = nTotalAmount;
     return true;
@@ -187,10 +194,11 @@ bool CBlockTreeDB::ReadFlag(const std::string &name, bool &fValue) {
 
 bool CBlockTreeDB::LoadBlockIndexGuts()
 {
-    leveldb::Iterator *pcursor = NewIterator();
+    boost::scoped_ptr<leveldb::Iterator> pcursor(NewIterator());
 
     CDataStream ssKeySet(SER_DISK, CLIENT_VERSION);
-    ssKeySet << make_pair('b', uint256(0));
+    uint256 hash;
+    ssKeySet << boost::tuples::make_tuple('b', uint256(0), 'a'); // 'b' is the prefix for BlockIndex, 'a' signifies the first part
     pcursor->Seek(ssKeySet.str());
 
     // Load mapBlockIndex
@@ -202,13 +210,22 @@ bool CBlockTreeDB::LoadBlockIndexGuts()
             char chType;
             ssKey >> chType;
             if (chType == 'b') {
-                leveldb::Slice slValue = pcursor->value();
-                CDataStream ssValue(slValue.data(), slValue.data()+slValue.size(), SER_DISK, CLIENT_VERSION);
-                CDiskBlockIndex diskindex;
-                ssValue >> diskindex;
+                // Detect pre-1.8 keys in the database and abort if found
+                if (slKey.size() < ssKeySet.size()) {
+                    return error("Database key size is %d expected %d, require reindex to upgrade.", slKey.size(), ssKeySet.size());
+                }
 
-                // Construct block index object
-                CBlockIndex* pindexNew = InsertBlockIndex(diskindex.GetBlockHash());
+                ssKey >> hash;
+                
+                leveldb::Slice slValue = pcursor->value();
+                CDataStream ssValue_immutable(slValue.data(), slValue.data()+slValue.size(), SER_DISK, CLIENT_VERSION);
+                CDiskBlockIndex diskindex;
+                ssValue_immutable >> diskindex; // read all immutable data
+
+                // Construct immutable parts of block index objecty
+                CBlockIndex* pindexNew = InsertBlockIndex(hash);
+                assert(diskindex.GetBlockHash() == *pindexNew->phashBlock); // paranoia check
+
                 pindexNew->pprev          = InsertBlockIndex(diskindex.hashPrev);
                 pindexNew->nHeight        = diskindex.nHeight;
                 pindexNew->nFile          = diskindex.nFile;
@@ -222,22 +239,27 @@ bool CBlockTreeDB::LoadBlockIndexGuts()
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                // Watch for genesis block
-                if (pindexGenesisBlock == NULL && diskindex.GetBlockHash() == hashGenesisBlock)
-                    pindexGenesisBlock = pindexNew;
+                // CheckIndex need phashBlock to be set
+                diskindex.phashBlock = pindexNew->phashBlock;
+                if (!diskindex.CheckIndex())
+                    return error("LoadBlockIndex() : CheckIndex failed: %s", pindexNew->ToString());
 
-                if (!pindexNew->CheckIndex())
-                    return error("LoadBlockIndex() : CheckIndex failed: %s", pindexNew->ToString().c_str());
+                pcursor->Next(); // now we should be on the 'b' subkey
+
+                assert(pcursor->Valid());
+
+                slValue = pcursor->value();
+                CDataStream ssValue_mutable(slValue.data(), slValue.data()+slValue.size(), SER_DISK, CLIENT_VERSION);
+                ssValue_mutable >> *pindexNew;      // read all mutable data
 
                 pcursor->Next();
             } else {
                 break; // if shutdown requested or finished loading block index
             }
         } catch (std::exception &e) {
-            return error("%s() : deserialize error", __PRETTY_FUNCTION__);
+            return error("%s : Deserialize or I/O error - %s", __func__, e.what());
         }
     }
-    delete pcursor;
 
     return true;
 }

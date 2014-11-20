@@ -1,9 +1,5 @@
 Building Franko
 
-See doc/readme-qt.rst for instructions on building Franko-Qt,
-the intended-for-end-users, nice-graphical-interface, reference
-implementation of Franko.
-
-See doc/build-*.txt for instructions on building frankod,
+See doc/build-*.md for instructions on building frankod,
 the intended-for-services, no-graphical-interface, reference
 implementation of Franko.
