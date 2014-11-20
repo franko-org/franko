@@ -5,8 +5,8 @@ define(_CLIENT_VERSION_MINOR, 9)
 define(_CLIENT_VERSION_REVISION, 0)
 define(_CLIENT_VERSION_BUILD, 1)
 define(_CLIENT_VERSION_IS_RELEASE, true)
-define(_COPYRIGHT_YEAR, 2014)
-AC_INIT([Franko Core],[_CLIENT_VERSION_MAJOR._CLIENT_VERSION_MINOR._CLIENT_VERSION_REVISION],[contact@frankos.org],[Franko])
+define(_COPYRIGHT_YEAR, 2015)
+AC_INIT([Franko Core],[_CLIENT_VERSION_MAJOR._CLIENT_VERSION_MINOR._CLIENT_VERSION_REVISION],[info@franko.org],[franko])
 AC_CONFIG_AUX_DIR([src/build-aux])
 AC_CONFIG_MACRO_DIR([src/m4])
 AC_CANONICAL_HOST
@@ -533,7 +533,7 @@ else
   AC_CHECK_LIB([crypto],      [main],, AC_MSG_ERROR(libcrypto missing))
 
   AC_CHECK_HEADER([openssl/ssl.h],, AC_MSG_ERROR(libssl headers missing),)
-  AC_CHECK_LIB([ssl],         [main],, AC_MSG_E*RROR(libssl missing))
+  AC_CHECK_LIB([ssl],         [main],, AC_MSG_ERROR(libssl missing))
 
   BITCOIN_QT_CHECK(AC_CHECK_LIB([protobuf] ,[main],,BITCOIN_QT_FAIL(libprotobuf not found)))
   if test x$use_qr != xno; then
