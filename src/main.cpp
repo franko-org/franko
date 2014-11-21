@@ -54,7 +54,7 @@ bool fReindex = false;
 bool fBenchmark = false;
 bool fTxIndex = false;
 unsigned int nCoinCacheSize = 5000;
-static CBigNum bnProofOfWorkLimit = Params().ProofOfWorkLimit();
+static CBigNum bnProofOfWorkLimit(~uint256(0) >> 20);
 
 /** Fees smaller than this (in satoshi) are considered zero fee (for transaction creation) */
 int64_t CTransaction::nMinTxFee = 100000000;  // Override with -mintxfee
