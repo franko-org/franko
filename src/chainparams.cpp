@@ -156,7 +156,7 @@ public:
         std::vector<unsigned char> sca = list_of(5);
         base58Prefixes[SCRIPT_ADDRESS] = sca;
         
-        std::vector<unsigned char> sk  = list_of(128);
+        std::vector<unsigned char> sk  = list_of(163); // (35+128)
         base58Prefixes[SECRET_KEY]     = sk;
         
         std::vector<unsigned char> epk = list_of(0x04)(0x88)(0xB2)(0x1E);
