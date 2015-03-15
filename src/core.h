@@ -36,7 +36,7 @@ static const int BLOCK_VERSION_CHAIN_END = (1 << 30);
 
 // Franko aux chain ID = 0x0062 (98)
 static const int AUXPOW_CHAIN_ID = 0x00CF;
-static const int AUXPOW_START_MAINNET = 1250000;
+static const int AUXPOW_START_MAINNET = 12500000;
 static const int AUXPOW_START_TESTNET = 0;
 
 /** No amount larger than this (in satoshi) is valid */
