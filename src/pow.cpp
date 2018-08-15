@@ -38,7 +38,7 @@ unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBloc
 
 	if (BlockLastSolved == NULL || BlockLastSolved->nHeight == 0 || (uint64_t)BlockLastSolved->nHeight < PastBlocksMin) { return bnPowLimit.GetCompact(); }
 
-    //int64_t LatestBlockTime = BlockLastSolved->GetBlockTime();
+    int64_t LatestBlockTime = BlockLastSolved->GetBlockTime();
 
     for (unsigned int i = 1; BlockReading && BlockReading->nHeight > 0; i++) {
         if (PastBlocksMax > 0 && i > PastBlocksMax) { break; }
@@ -48,15 +48,28 @@ unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBloc
             else        { PastDifficultyAverage = ((CBigNum().SetCompact(BlockReading->nBits) - PastDifficultyAveragePrev) / i) + PastDifficultyAveragePrev; }
         PastDifficultyAveragePrev = PastDifficultyAverage;
 
+        if (BlockReading->nHeight > 646120 && LatestBlockTime < BlockReading->GetBlockTime()) {
+            //eliminates the ability to go back in time
+            LatestBlockTime = BlockReading->GetBlockTime();
+        }
+
 
         PastRateActualSeconds                        = BlockLastSolved->GetBlockTime() - BlockReading->GetBlockTime();
         PastRateTargetSeconds                        = Blocktime * PastBlocksMass;
         PastRateAdjustmentRatio                      = double(1);
+
+        if (BlockReading->nHeight > 646120){
+           //this should slow down the upward difficulty change
+           if (PastRateActualSeconds < 5) { PastRateActualSeconds = 5; }
+         }else {
+           if (PastRateActualSeconds < 0) { PastRateActualSeconds = 0; }
+         }
+
         if (PastRateActualSeconds < 0) { PastRateActualSeconds = 0; }
         if (PastRateActualSeconds != 0 && PastRateTargetSeconds != 0) {
             PastRateAdjustmentRatio                  = double(PastRateTargetSeconds) / double(PastRateActualSeconds);
         }
-        EventHorizonDeviation = 1 + (0.7084 * pow((double(PastBlocksMass)/double(144)), -1.228));
+        EventHorizonDeviation = 1 + (0.7084 * pow((double(PastBlocksMass)/double(28.2)), -1.228));
         EventHorizonDeviationFast = EventHorizonDeviation;
         EventHorizonDeviationSlow  = 1 / EventHorizonDeviation;
 
@@ -188,9 +201,11 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 
   switch(DiffMode){
       case 2:
+          //LogPrintf("GetNextBlockRequired V2 BlockHeight = %d\n", BlockHeight);
           return GetNextWorkRequired_V2(pindexLast, pblock);
           break;
       default:
+          //LogPrintf("GetNextBlockRequired V1 BlockHeight = %d\n", BlockHeight);
           return GetNextWorkRequired_V1(pindexLast, pblock, params);
 
   }
