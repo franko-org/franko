@@ -10,7 +10,7 @@
 #include "primitives/block.h"
 #include "uint256.h"
 #include "util.h"
-#include "bignum.h"
+#include "bignum_new.h"
 
 unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBlockHeader *pblock, uint64_t BlocksTargetSpacing, uint64_t PastBlocksMin, uint64_t PastBlocksMax) {
     /* current difficulty formula, megacoin - kimoto gravity well */
