@@ -1,143 +1,284 @@
 Release Process
 ====================
 
-###update (commit) version in sources
+Before every release candidate:
 
-	contrib/verifysfbinaries/verify.sh
-	doc/README*
-	share/setup.nsi
-	src/clientversion.h (change CLIENT_VERSION_IS_RELEASE to true)
+* Update translations (ping wumpus on IRC) see [translation_process.md](https://github.com/bitcoin/bitcoin/blob/master/doc/translation_process.md#synchronising-translations).
 
-###tag version in git
+* Update manpages, see [gen-manpages.sh](https://github.com/franko-org/franko/blob/master/contrib/devtools/README.md#gen-manpagessh).
 
-	git tag -s v(new version, e.g. 0.8.0)
+Before every minor and major release:
 
-###write release notes. git shortlog helps a lot, for example:
+* Update [bips.md](bips.md) to account for changes since the last release.
+* Update version in `configure.ac` (don't forget to set `CLIENT_VERSION_IS_RELEASE` to `true`)
+* Write release notes (see below)
+* Update `src/chainparams.cpp` nMinimumChainWork with information from the getblockchaininfo rpc.
+* Update `src/chainparams.cpp` defaultAssumeValid  with information from the getblockhash rpc.
+  - The selected value must not be orphaned so it may be useful to set the value two blocks back from the tip.
+  - Testnet should be set some tens of thousands back from the tip due to reorgs there.
+  - This update should be reviewed with a reindex-chainstate with assumevalid=0 to catch any defect
+     that causes rejection of blocks in the past history.
 
-	git shortlog --no-merges v(current version, e.g. 0.7.2)..v(new version, e.g. 0.8.0)
+Before every major release:
 
-* * *
+* Update hardcoded [seeds](/contrib/seeds/README.md), see [this pull request](https://github.com/bitcoin/bitcoin/pull/7415) for an example.
+* Update [`BLOCK_CHAIN_SIZE`](/src/qt/intro.cpp) to the current size plus some overhead.
+* Update `src/chainparams.cpp` chainTxData with statistics about the transaction count and rate.
+* Update version of `contrib/gitian-descriptors/*.yml`: usually one'd want to do this on master after branching off the release - but be sure to at least do it before a new major release
 
-###update gitian
+### First time / New builders
 
- In order to take advantage of the new caching features in gitian, be sure to update to a recent version (e9741525c or higher is recommended)
+If you're using the automated script (found in [contrib/gitian-build.sh](/contrib/gitian-build.sh)), then at this point you should run it with the "--setup" command. Otherwise ignore this.
 
-###perform gitian builds
+Check out the source code in the following directory hierarchy.
 
- From a directory containing the franko source, gitian-builder and gitian.sigs.frk
-  
-	export SIGNER=(your gitian key, ie wtogami, coblee, etc)
-	export VERSION=(new version, e.g. 0.8.0)
-	pushd ./franko
-	git checkout v${VERSION}
-	popd
-	pushd ./gitian-builder
+    cd /path/to/your/toplevel/build
+    git clone https://github.com/franko-org/gitian.sigs.frk.git
+    git clone https://github.com/franko-org/franko-detached-sigs.git
+    git clone https://github.com/devrandom/gitian-builder.git
+    git clone https://github.com/franko-org/franko.git
 
-###fetch and build inputs: (first time, or when dependency versions change)
- 
-	mkdir -p inputs
+### Franko maintainers/release engineers, suggestion for writing release notes
 
- Register and download the Apple SDK: (see OSX Readme for details)
- 
- https://developer.apple.com/downloads/download.action?path=Developer_Tools/xcode_4.6.3/xcode4630916281a.dmg
- 
- Using a Mac, create a tarball for the 10.7 SDK and copy it to the inputs directory:
- 
-	tar -C /Volumes/Xcode/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/ -czf MacOSX10.7.sdk.tar.gz MacOSX10.7.sdk
+Write release notes. git shortlog helps a lot, for example:
 
-###Optional: Seed the Gitian sources cache
+    git shortlog --no-merges v(current version, e.g. 0.7.2)..v(new version, e.g. 0.8.0)
 
-  By default, gitian will fetch source files as needed. For offline builds, they can be fetched ahead of time:
+(or ping @wumpus on IRC, he has specific tooling to generate the list of merged pulls
+and sort them into categories based on labels)
 
-	make -C ../franko/depends download SOURCES_PATH=`pwd`/cache/common
+Generate list of authors:
 
-  Only missing files will be fetched, so this is safe to re-run for each build.
+    git log --format='%aN' "$*" | sort -ui | sed -e 's/^/- /'
 
-###Build Franko Core for Linux, Windows, and OS X:
-  
-	./bin/gbuild --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-linux.yml
-	./bin/gsign --signer $SIGNER --release ${VERSION}-linux --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-linux.yml
-	mv build/out/franko-*.tar.gz build/out/src/franko-*.tar.gz ../
-	./bin/gbuild --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-win.yml
-	./bin/gsign --signer $SIGNER --release ${VERSION}-win --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-win.yml
-	mv build/out/franko-*.zip build/out/franko-*.exe ../
-	./bin/gbuild --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-osx.yml
-	./bin/gsign --signer $SIGNER --release ${VERSION}-osx-unsigned --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-osx.yml
-	mv build/out/franko-*-unsigned.tar.gz inputs/franko-osx-unsigned.tar.gz
-	mv build/out/franko-*.tar.gz build/out/franko-*.dmg ../
-	popd
-  Build output expected:
+Tag version (or release candidate) in git
 
-  1. source tarball (franko-${VERSION}.tar.gz)
-  2. linux 32-bit and 64-bit binaries dist tarballs (franko-${VERSION}-linux[32|64].tar.gz)
-  3. windows 32-bit and 64-bit installers and dist zips (franko-${VERSION}-win[32|64]-setup.exe, franko-${VERSION}-win[32|64].zip)
-  4. OSX unsigned installer (franko-${VERSION}-osx-unsigned.dmg)
-  5. Gitian signatures (in gitian.sigs/${VERSION}-<linux|win|osx-unsigned>/(your gitian key)/
+    git tag -s v(new version, e.g. 0.8.0)
 
-###Next steps:
+### Setup and perform Gitian builds
 
-Commit your signature to gitian.sigs:
+If you're using the automated script (found in [contrib/gitian-build.sh](/contrib/gitian-build.sh)), then at this point you should run it with the "--build" command. Otherwise ignore this.
 
-	pushd gitian.sigs
-	git add ${VERSION}-linux/${SIGNER}
-	git add ${VERSION}-win/${SIGNER}
-	git add ${VERSION}-osx-unsigned/${SIGNER}
-	git commit -a
-	git push  # Assuming you can push to the gitian.sigs tree
-	popd
+Setup Gitian descriptors:
 
-  Wait for OSX detached signature:
-	Once the OSX build has 3 matching signatures, Warren/Coblee will sign it with the apple App-Store key.
-	He will then upload a detached signature to be combined with the unsigned app to create a signed binary.
+    pushd ./franko
+    export SIGNER=(your Gitian key, ie bluematt, sipa, etc)
+    export VERSION=(new version, e.g. 0.8.0)
+    git fetch
+    git checkout v${VERSION}
+    popd
 
-  Create the signed OSX binary:
+Ensure your gitian.sigs.frk are up-to-date if you wish to gverify your builds against other Gitian signatures.
 
-	pushd ./gitian-builder
-	# Fetch the signature as instructed by Warren/Coblee
-	cp signature.tar.gz inputs/
-	./bin/gbuild -i ../franko/contrib/gitian-descriptors/gitian-osx-signer.yml
-	./bin/gsign --signer $SIGNER --release ${VERSION}-osx-signed --destination ../gitian.sigs/ ../franko/contrib/gitian-descriptors/gitian-osx-signer.yml
-	mv build/out/franko-osx-signed.dmg ../franko-${VERSION}-osx.dmg
-	popd
+    pushd ./gitian.sigs.frk
+    git pull
+    popd
 
-Commit your signature for the signed OSX binary:
+Ensure gitian-builder is up-to-date:
 
-	pushd gitian.sigs
-	git add ${VERSION}-osx-signed/${SIGNER}
-	git commit -a
-	git push  # Assuming you can push to the gitian.sigs tree
-	popd
+    pushd ./gitian-builder
+    git pull
+    popd
 
--------------------------------------------------------------------------
+### Fetch and create inputs: (first time, or when dependency versions change)
+
+    pushd ./gitian-builder
+    mkdir -p inputs
+    wget -P inputs https://bitcoincore.org/cfields/osslsigncode-Backports-to-1.7.1.patch
+    wget -P inputs http://downloads.sourceforge.net/project/osslsigncode/osslsigncode/osslsigncode-1.7.1.tar.gz
+    popd
+
+Create the OS X SDK tarball, see the [OS X readme](README_osx.md) for details, and copy it into the inputs directory.
+
+### Optional: Seed the Gitian sources cache and offline git repositories
+
+By default, Gitian will fetch source files as needed. To cache them ahead of time:
+
+    pushd ./gitian-builder
+    make -C ../franko/depends download SOURCES_PATH=`pwd`/cache/common
+    popd
+
+Only missing files will be fetched, so this is safe to re-run for each build.
+
+NOTE: Offline builds must use the --url flag to ensure Gitian fetches only from local URLs. For example:
+
+    pushd ./gitian-builder
+    ./bin/gbuild --url franko=/path/to/franko,signature=/path/to/sigs {rest of arguments}
+    popd
+
+The gbuild invocations below <b>DO NOT DO THIS</b> by default.
+
+### Build and sign Franko Core for Linux, Windows, and OS X:
+
+    pushd ./gitian-builder
+    ./bin/gbuild --num-make 2 --memory 3000 --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-linux.yml
+    ./bin/gsign --signer $SIGNER --release ${VERSION}-linux --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-linux.yml
+    mv build/out/franko-*.tar.gz build/out/src/franko-*.tar.gz ../
+
+    ./bin/gbuild --num-make 2 --memory 3000 --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-win.yml
+    ./bin/gsign --signer $SIGNER --release ${VERSION}-win-unsigned --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-win.yml
+    mv build/out/franko-*-win-unsigned.tar.gz inputs/franko-win-unsigned.tar.gz
+    mv build/out/franko-*.zip build/out/franko-*.exe ../
+
+    ./bin/gbuild --num-make 2 --memory 3000 --commit franko=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-osx.yml
+    ./bin/gsign --signer $SIGNER --release ${VERSION}-osx-unsigned --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-osx.yml
+    mv build/out/franko-*-osx-unsigned.tar.gz inputs/franko-osx-unsigned.tar.gz
+    mv build/out/franko-*.tar.gz build/out/franko-*.dmg ../
+    popd
+
+Build output expected:
+
+  1. source tarball (`franko-${VERSION}.tar.gz`)
+  2. linux 32-bit and 64-bit dist tarballs (`franko-${VERSION}-linux[32|64].tar.gz`)
+  3. windows 32-bit and 64-bit unsigned installers and dist zips (`franko-${VERSION}-win[32|64]-setup-unsigned.exe`, `franko-${VERSION}-win[32|64].zip`)
+  4. OS X unsigned installer and dist tarball (`franko-${VERSION}-osx-unsigned.dmg`, `franko-${VERSION}-osx64.tar.gz`)
+  5. Gitian signatures (in `gitian.sigs.frk/${VERSION}-<linux|{win,osx}-unsigned>/(your Gitian key)/`)
+
+### Verify other gitian builders signatures to your own. (Optional)
+
+Add other gitian builders keys to your gpg keyring, and/or refresh keys.
+
+    gpg --import franko/contrib/gitian-keys/*.pgp
+    gpg --refresh-keys
+
+Verify the signatures
+
+    pushd ./gitian-builder
+    ./bin/gverify -v -d ../gitian.sigs.frk/ -r ${VERSION}-linux ../franko/contrib/gitian-descriptors/gitian-linux.yml
+    ./bin/gverify -v -d ../gitian.sigs.frk/ -r ${VERSION}-win-unsigned ../franko/contrib/gitian-descriptors/gitian-win.yml
+    ./bin/gverify -v -d ../gitian.sigs.frk/ -r ${VERSION}-osx-unsigned ../franko/contrib/gitian-descriptors/gitian-osx.yml
+    popd
+
+### Next steps:
+
+Commit your signature to gitian.sigs.frk:
+
+    pushd gitian.sigs.frk
+    git add ${VERSION}-linux/${SIGNER}
+    git add ${VERSION}-win-unsigned/${SIGNER}
+    git add ${VERSION}-osx-unsigned/${SIGNER}
+    git commit -a
+    git push  # Assuming you can push to the gitian.sigs.frk tree
+    popd
+
+Codesigner only: Create Windows/OS X detached signatures:
+- Only one person handles codesigning. Everyone else should skip to the next step.
+- Only once the Windows/OS X builds each have 3 matching signatures may they be signed with their respective release keys.
+
+Codesigner only: Sign the osx binary:
+
+    transfer franko-osx-unsigned.tar.gz to osx for signing
+    tar xf franko-osx-unsigned.tar.gz
+    ./detached-sig-create.sh -s "Key ID"
+    Enter the keychain password and authorize the signature
+    Move signature-osx.tar.gz back to the gitian host
+
+Codesigner only: Sign the windows binaries:
+
+    tar xf franko-win-unsigned.tar.gz
+    ./detached-sig-create.sh -key /path/to/codesign.key
+    Enter the passphrase for the key when prompted
+    signature-win.tar.gz will be created
+
+Codesigner only: Commit the detached codesign payloads:
+
+    cd ~/franko-detached-sigs
+    checkout the appropriate branch for this release series
+    rm -rf *
+    tar xf signature-osx.tar.gz
+    tar xf signature-win.tar.gz
+    git add -a
+    git commit -m "point to ${VERSION}"
+    git tag -s v${VERSION} HEAD
+    git push the current branch and new tag
+
+Non-codesigners: wait for Windows/OS X detached signatures:
+
+- Once the Windows/OS X builds each have 3 matching signatures, they will be signed with their respective release keys.
+- Detached signatures will then be committed to the [franko-detached-sigs](https://github.com/franko-org/franko-detached-sigs) repository, which can be combined with the unsigned apps to create signed binaries.
+
+Create (and optionally verify) the signed OS X binary:
+
+    pushd ./gitian-builder
+    ./bin/gbuild -i --commit signature=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-osx-signer.yml
+    ./bin/gsign --signer $SIGNER --release ${VERSION}-osx-signed --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-osx-signer.yml
+    ./bin/gverify -v -d ../gitian.sigs.frk/ -r ${VERSION}-osx-signed ../franko/contrib/gitian-descriptors/gitian-osx-signer.yml
+    mv build/out/franko-osx-signed.dmg ../franko-${VERSION}-osx.dmg
+    popd
+
+Create (and optionally verify) the signed Windows binaries:
+
+    pushd ./gitian-builder
+    ./bin/gbuild -i --commit signature=v${VERSION} ../franko/contrib/gitian-descriptors/gitian-win-signer.yml
+    ./bin/gsign --signer $SIGNER --release ${VERSION}-win-signed --destination ../gitian.sigs.frk/ ../franko/contrib/gitian-descriptors/gitian-win-signer.yml
+    ./bin/gverify -v -d ../gitian.sigs.frk/ -r ${VERSION}-win-signed ../franko/contrib/gitian-descriptors/gitian-win-signer.yml
+    mv build/out/franko-*win64-setup.exe ../franko-${VERSION}-win64-setup.exe
+    mv build/out/franko-*win32-setup.exe ../franko-${VERSION}-win32-setup.exe
+    popd
+
+Commit your signature for the signed OS X/Windows binaries:
+
+    pushd gitian.sigs.frk
+    git add ${VERSION}-osx-signed/${SIGNER}
+    git add ${VERSION}-win-signed/${SIGNER}
+    git commit -a
+    git push  # Assuming you can push to the gitian.sigs.frk tree
+    popd
 
 ### After 3 or more people have gitian-built and their results match:
 
-- Perform code-signing.
-
-    - Code-sign Windows -setup.exe (in a Windows virtual machine using signtool)
-
-  Note: only Warren/Coblee has the code-signing keys currently.
-
 - Create `SHA256SUMS.asc` for the builds, and GPG-sign it:
+
 ```bash
 sha256sum * > SHA256SUMS
+```
+
+The list of files should be:
+```
+franko-${VERSION}-aarch64-linux-gnu.tar.gz
+franko-${VERSION}-arm-linux-gnueabihf.tar.gz
+franko-${VERSION}-i686-pc-linux-gnu.tar.gz
+franko-${VERSION}-x86_64-linux-gnu.tar.gz
+franko-${VERSION}-osx64.tar.gz
+franko-${VERSION}-osx.dmg
+franko-${VERSION}.tar.gz
+franko-${VERSION}-win32-setup.exe
+franko-${VERSION}-win32.zip
+franko-${VERSION}-win64-setup.exe
+franko-${VERSION}-win64.zip
+```
+The `*-debug*` files generated by the gitian build contain debug symbols
+for troubleshooting by developers. It is assumed that anyone that is interested
+in debugging can run gitian to generate the files for themselves. To avoid
+end-user confusion about which file to pick, as well as save storage
+space *do not upload these to the frankos.org server, nor put them in the torrent*.
+
+- GPG-sign it, delete the unsigned file:
+```
 gpg --digest-algo sha256 --clearsign SHA256SUMS # outputs SHA256SUMS.asc
 rm SHA256SUMS
 ```
 (the digest algorithm is forced to sha256 to avoid confusion of the `Hash:` header that GPG adds with the SHA256 used for the files)
+Note: check that SHA256SUMS itself doesn't end up in SHA256SUMS, which is a spurious/nonsensical entry.
+
+- Upload zips and installers, as well as `SHA256SUMS.asc` from last step, to the frankos.org server.
+
+```
 
 - Update frankos.org version
 
 - Announce the release:
 
-  - Release sticky on frankotalk: https://frankotalk.org/index.php?board=1.0
+  - franko-dev and franko-dev mailing list
 
-  - franko-development mailing list
+  - blog.frankos.org blog post
 
-  - Update title of #franko on Freenode IRC
+  - Update title of #franko and #franko-dev on Freenode IRC
 
-  - Optionally reddit /r/franko, ... but this will usually sort out itself
+  - Optionally twitter, reddit /r/Franko, ... but this will usually sort out itself
 
-- Add release notes for the new version to the directory `doc/release-notes` in git master
+  - Archive release notes for the new version to `doc/release-notes/` (branch `master` and branch of the release)
 
-- Celebrate 
+  - Create a [new GitHub release](https://github.com/franko-org/franko/releases/new) with a link to the archived release notes.
+
+  - Celebrate

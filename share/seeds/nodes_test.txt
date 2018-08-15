@@ -1,4 +1,0 @@
-# List of fixed seed nodes for testnet
-
-162.243.72.166:17912
-107.191.58.84:17912

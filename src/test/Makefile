@@ -1,4 +1,4 @@
-lssrall:
+all:
 	$(MAKE) -C .. bitcoin_test
 clean:
 	$(MAKE) -C .. bitcoin_test_clean
