@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2016 The Bitcoin Core developers
+# Copyright (c) 2014-2017 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Base class for RPC testing."""
 
-from collections import deque
 from enum import Enum
 import logging
 import optparse
@@ -14,7 +13,6 @@ import shutil
 import sys
 import tempfile
 import time
-import traceback
 
 from .authproxy import JSONRPCException
 from . import coverage
@@ -43,7 +41,7 @@ TEST_EXIT_PASSED = 0
 TEST_EXIT_FAILED = 1
 TEST_EXIT_SKIPPED = 77
 
-class BitcoinTestFramework(object):
+class BitcoinTestFramework():
     """Base class for a franko test script.
 
     Individual franko test scripts should subclass this class and override the set_test_params() and run_test() methods.
@@ -64,6 +62,7 @@ class BitcoinTestFramework(object):
         self.setup_clean_chain = False
         self.nodes = []
         self.mocktime = 0
+        self.supports_cli = False
         self.set_test_params()
 
         assert hasattr(self, "num_nodes"), "Test must set self.num_nodes in set_test_params()"
@@ -93,6 +92,8 @@ class BitcoinTestFramework(object):
                           help="Location of the test framework config file")
         parser.add_option("--pdbonfailure", dest="pdbonfailure", default=False, action="store_true",
                           help="Attach a python debugger if test fails")
+        parser.add_option("--usecli", dest="usecli", default=False, action="store_true",
+                          help="use franko-cli instead of RPC for all commands")
         self.add_options(parser)
         (self.options, self.args) = parser.parse_args()
 
@@ -115,6 +116,8 @@ class BitcoinTestFramework(object):
         success = TestStatus.FAILED
 
         try:
+            if self.options.usecli and not self.supports_cli:
+                raise SkipTest("--usecli specified but test does not support using CLI")
             self.setup_chain()
             self.setup_network()
             self.run_test()
@@ -149,32 +152,19 @@ class BitcoinTestFramework(object):
             shutil.rmtree(self.options.tmpdir)
         else:
             self.log.warning("Not cleaning up dir %s" % self.options.tmpdir)
-            if os.getenv("PYTHON_DEBUG", ""):
-                # Dump the end of the debug logs, to aid in debugging rare
-                # travis failures.
-                import glob
-                filenames = [self.options.tmpdir + "/test_framework.log"]
-                filenames += glob.glob(self.options.tmpdir + "/node*/regtest/debug.log")
-                MAX_LINES_TO_PRINT = 1000
-                for fn in filenames:
-                    try:
-                        with open(fn, 'r') as f:
-                            print("From", fn, ":")
-                            print("".join(deque(f, MAX_LINES_TO_PRINT)))
-                    except OSError:
-                        print("Opening file %s failed." % fn)
-                        traceback.print_exc()
 
         if success == TestStatus.PASSED:
             self.log.info("Tests successful")
-            sys.exit(TEST_EXIT_PASSED)
+            exit_code = TEST_EXIT_PASSED
         elif success == TestStatus.SKIPPED:
             self.log.info("Test skipped")
-            sys.exit(TEST_EXIT_SKIPPED)
+            exit_code = TEST_EXIT_SKIPPED
         else:
             self.log.error("Test failed. Test logging available at %s/test_framework.log", self.options.tmpdir)
-            logging.shutdown()
-            sys.exit(TEST_EXIT_FAILED)
+            self.log.error("Hint: Call {} '{}' to consolidate all logs".format(os.path.normpath(os.path.dirname(os.path.realpath(__file__)) + "/../combine_logs.py"), self.options.tmpdir))
+            exit_code = TEST_EXIT_FAILED
+        logging.shutdown()
+        sys.exit(exit_code)
 
     # Methods to override in subclass test scripts.
     def set_test_params(self):
@@ -228,20 +218,20 @@ class BitcoinTestFramework(object):
         assert_equal(len(extra_args), num_nodes)
         assert_equal(len(binary), num_nodes)
         for i in range(num_nodes):
-            self.nodes.append(TestNode(i, self.options.tmpdir, extra_args[i], rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir))
+            self.nodes.append(TestNode(i, self.options.tmpdir, extra_args[i], rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir, use_cli=self.options.usecli))
 
-    def start_node(self, i, extra_args=None, stderr=None):
+    def start_node(self, i, *args, **kwargs):
         """Start a frankod"""
 
         node = self.nodes[i]
 
-        node.start(extra_args, stderr)
+        node.start(*args, **kwargs)
         node.wait_for_rpc_connection()
 
         if self.options.coveragedir is not None:
             coverage.write_all_rpc_commands(self.options.coveragedir, node.rpc)
 
-    def start_nodes(self, extra_args=None):
+    def start_nodes(self, extra_args=None, *args, **kwargs):
         """Start multiple frankods"""
 
         if extra_args is None:
@@ -249,7 +239,7 @@ class BitcoinTestFramework(object):
         assert_equal(len(extra_args), self.num_nodes)
         try:
             for i, node in enumerate(self.nodes):
-                node.start(extra_args[i])
+                node.start(extra_args[i], *args, **kwargs)
             for node in self.nodes:
                 node.wait_for_rpc_connection()
         except:
@@ -262,12 +252,12 @@ class BitcoinTestFramework(object):
                 coverage.write_all_rpc_commands(self.options.coveragedir, node.rpc)
 
     def stop_node(self, i):
-        """Stop a bitcoind test node"""
+        """Stop a frankod test node"""
         self.nodes[i].stop_node()
         self.nodes[i].wait_until_stopped()
 
     def stop_nodes(self):
-        """Stop multiple bitcoind test nodes"""
+        """Stop multiple frankod test nodes"""
         for node in self.nodes:
             # Issue RPC to stop nodes
             node.stop_node()
@@ -276,10 +266,15 @@ class BitcoinTestFramework(object):
             # Wait for nodes to stop
             node.wait_until_stopped()
 
-    def assert_start_raises_init_error(self, i, extra_args=None, expected_msg=None):
+    def restart_node(self, i, extra_args=None):
+        """Stop and start a test node"""
+        self.stop_node(i)
+        self.start_node(i, extra_args)
+
+    def assert_start_raises_init_error(self, i, extra_args=None, expected_msg=None, *args, **kwargs):
         with tempfile.SpooledTemporaryFile(max_size=2**16) as log_stderr:
             try:
-                self.start_node(i, extra_args, stderr=log_stderr)
+                self.start_node(i, extra_args, stderr=log_stderr, *args, **kwargs)
                 self.stop_node(i)
             except Exception as e:
                 assert 'frankod exited' in str(e)  # node must have shutdown
@@ -362,7 +357,7 @@ class BitcoinTestFramework(object):
         self.log.addHandler(ch)
 
         if self.options.trace_rpc:
-            rpc_logger = logging.getLogger("FrankoRPC")
+            rpc_logger = logging.getLogger("BitcoinRPC")
             rpc_logger.setLevel(logging.DEBUG)
             rpc_handler = logging.StreamHandler(sys.stdout)
             rpc_handler.setLevel(logging.DEBUG)
@@ -392,7 +387,7 @@ class BitcoinTestFramework(object):
             # Create cache directories, run bitcoinds:
             for i in range(MAX_NODES):
                 datadir = initialize_datadir(self.options.cachedir, i)
-                args = [os.getenv("LITECOIND", "frankod"), "-server", "-keypool=1", "-datadir=" + datadir, "-discover=0"]
+                args = [os.getenv("FRANKOD", "frankod"), "-server", "-keypool=1", "-datadir=" + datadir, "-discover=0"]
                 if i > 0:
                     args.append("-connect=127.0.0.1:" + str(p2p_port(0)))
                 self.nodes.append(TestNode(i, self.options.cachedir, extra_args=[], rpchost=None, timewait=None, binary=None, stderr=None, mocktime=self.mocktime, coverage_dir=None))
@@ -410,7 +405,6 @@ class BitcoinTestFramework(object):
             #
             # blocks are created with timestamps 10 minutes apart
             # starting from 2010 minutes in the past
-
             self.enable_mocktime()
             block_time = self.mocktime - (201 * 10 * 60)
             for i in range(2):
@@ -428,7 +422,7 @@ class BitcoinTestFramework(object):
             self.disable_mocktime()
             for i in range(MAX_NODES):
                 os.remove(log_filename(self.options.cachedir, i, "debug.log"))
-                os.remove(log_filename(self.options.cachedir, i, "db.log"))
+                os.remove(log_filename(self.options.cachedir, i, "wallets/db.log"))
                 os.remove(log_filename(self.options.cachedir, i, "peers.dat"))
                 os.remove(log_filename(self.options.cachedir, i, "fee_estimates.dat"))
 
@@ -460,10 +454,10 @@ class ComparisonTestFramework(BitcoinTestFramework):
 
     def add_options(self, parser):
         parser.add_option("--testbinary", dest="testbinary",
-                          default=os.getenv("LITECOIND", "frankod"),
+                          default=os.getenv("FRANKOD", "frankod"),
                           help="frankod binary to test")
         parser.add_option("--refbinary", dest="refbinary",
-                          default=os.getenv("LITECOIND", "frankod"),
+                          default=os.getenv("FRANKOD", "frankod"),
                           help="frankod binary to use for reference nodes (if any)")
 
     def setup_network(self):

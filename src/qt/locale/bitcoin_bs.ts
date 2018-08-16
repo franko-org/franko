@@ -32,6 +32,10 @@
     </context>
 <context>
     <name>Intro</name>
+    <message>
+        <source>Franko</source>
+        <translation>Franko</translation>
+    </message>
     </context>
 <context>
     <name>ModalOverlay</name>

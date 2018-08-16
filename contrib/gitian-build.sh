@@ -6,7 +6,6 @@
 sign=false
 verify=false
 build=false
-setupenv=false
 
 # Systems to build
 linux=true
@@ -48,7 +47,7 @@ Options:
 -j		Number of processes to use. Default 2
 -m		Memory to allocate in MiB. Default 2000
 --kvm           Use KVM instead of LXC
---setup         Setup the gitian building environment. Uses KVM. If you want to use lxc, use the --lxc option. Only works on Debian-based systems (Ubuntu, Debian)
+--setup         Set up the Gitian building environment. Uses KVM. If you want to use lxc, use the --lxc option. Only works on Debian-based systems (Ubuntu, Debian)
 --detach-sign   Create the assert file for detached signing. Will not commit anything.
 --no-commit     Do not commit anything to git
 -h|--help	Print this help message
@@ -106,7 +105,7 @@ while :; do
 		fi
 		shift
 	    else
-		echo 'Error: "--os" requires an argument containing an l (for linux), w (for windows), or x (for Mac OSX)\n'
+		echo 'Error: "--os" requires an argument containing an l (for linux), w (for windows), or x (for Mac OSX)'
 		exit 1
 	    fi
 	    ;;
@@ -179,8 +178,6 @@ done
 if [[ $lxc = true ]]
 then
     export USE_LXC=1
-    export LXC_BRIDGE=lxcbr0
-    sudo ifconfig lxcbr0 up 10.0.2.2
 fi
 
 # Check for OSX SDK
@@ -191,7 +188,7 @@ then
 fi
 
 # Get signer
-if [[ -n"$1" ]]
+if [[ -n "$1" ]]
 then
     SIGNER=$1
     shift

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2016 The Bitcoin Core developers
+# Copyright (c) 2014-2017 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Helpful routines for regression testing."""
@@ -28,10 +28,10 @@ def assert_fee_amount(fee, tx_size, fee_per_kB):
     """Assert the fee was in range"""
     target_fee = tx_size * fee_per_kB / 1000
     if fee < target_fee:
-        raise AssertionError("Fee of %s BTC too low! (Should be %s BTC)" % (str(fee), str(target_fee)))
+        raise AssertionError("Fee of %s FRK too low! (Should be %s FRK)" % (str(fee), str(target_fee)))
     # allow the wallet's estimation to be at most 2 bytes off
     if fee > (tx_size + 2) * fee_per_kB / 1000:
-        raise AssertionError("Fee of %s BTC too high! (Should be %s BTC)" % (str(fee), str(target_fee)))
+        raise AssertionError("Fee of %s FRK too high! (Should be %s FRK)" % (str(fee), str(target_fee)))
 
 def assert_equal(thing1, thing2, *args):
     if thing1 != thing2 or any(thing1 != arg for arg in args):
@@ -390,7 +390,7 @@ def sync_chain(rpc_connections, *, wait=1, timeout=60):
         timeout -= wait
     raise AssertionError("Chain sync failed: Best block hashes don't match")
 
-def sync_mempools(rpc_connections, *, wait=1, timeout=60):
+def sync_mempools(rpc_connections, *, wait=1, timeout=60, flush_scheduler=True):
     """
     Wait until everybody has the same transactions in their memory
     pools
@@ -402,6 +402,9 @@ def sync_mempools(rpc_connections, *, wait=1, timeout=60):
             if set(rpc_connections[i].getrawmempool()) == pool:
                 num_match = num_match + 1
         if num_match == len(rpc_connections):
+            if flush_scheduler:
+                for r in rpc_connections:
+                    r.syncwithvalidationinterfacequeue()
             return
         time.sleep(wait)
         timeout -= wait
